@@ -1349,77 +1349,80 @@ RegisterNetEvent('ox_inventory:setPlayerInventory', function(currentDrops, inven
 
 	TriggerEvent('ox_inventory:updateInventory', PlayerData.inventory)
 
-	client.interval = SetInterval(function()
-		if invOpen == false then
-			playerCoords = GetEntityCoords(playerPed)
+    client.interval = SetInterval(function()
+        if invOpen == false then
+            playerCoords = GetEntityCoords(playerPed)
 
-			if currentWeapon and IsPedUsingActionMode(playerPed) then
-				SetPedUsingActionMode(playerPed, false, -1, 'DEFAULT_ACTION')
-			end
+            if currentWeapon and IsPedUsingActionMode(playerPed) then
+                SetPedUsingActionMode(playerPed, false, -1, 'DEFAULT_ACTION')
+            end
 
-		elseif invOpen == true then
-			if not canOpenInventory() then
-				client.closeInventory()
-			else
-				playerCoords = GetEntityCoords(playerPed)
+        elseif invOpen == true then
+            if not canOpenInventory() then
+                client.closeInventory()
+            else
+                playerCoords = GetEntityCoords(playerPed)
 
-				if currentInventory and not currentInventory.ignoreSecurityChecks then
-                    local maxDistance = (currentInventory.distance or currentInventory.type == 'stash' and 4.8 or 1.8) + 0.2
+                if currentInventory and not currentInventory.ignoreSecurityChecks then
+                    if currentInventory.type == 'otherplayer' then
+                        local id = GetPlayerFromServerId(currentInventory.id)
+                        local ped = GetPlayerPed(id)
+                        local pedCoords = GetEntityCoords(ped)
 
-					if currentInventory.type == 'otherplayer' then
-						local id = GetPlayerFromServerId(currentInventory.id)
-						local ped = GetPlayerPed(id)
-						local pedCoords = GetEntityCoords(ped)
+                        if not id or #(playerCoords - pedCoords) > 1.8 or not (client.hasGroup(shared.police) or canOpenTarget(ped)) then
+                            client.closeInventory()
+                            lib.notify({ id = 'inventory_lost_access', type = 'error', description = locale('inventory_lost_access') })
+                        else
+                            TaskTurnPedToFaceCoord(playerPed, pedCoords.x, pedCoords.y, pedCoords.z, 50)
+                        end
 
-						if not id or #(playerCoords - pedCoords) > maxDistance or not (client.hasGroup(shared.police) or canOpenTarget(ped)) then
-							client.closeInventory()
-							lib.notify({ id = 'inventory_lost_access', type = 'error', description = locale('inventory_lost_access') })
-						else
-							TaskTurnPedToFaceCoord(playerPed, pedCoords.x, pedCoords.y, pedCoords.z, 50)
-						end
+                    elseif currentInventory.coords and (#(playerCoords - currentInventory.coords) > (currentInventory.distance or 2.0) or canOpenTarget(playerPed)) then
+                        client.closeInventory()
+                        lib.notify({ id = 'inventory_lost_access', type = 'error', description = locale('inventory_lost_access') })
+                    end
+                end
+            end
+        end
 
-					elseif currentInventory.coords and (#(playerCoords - currentInventory.coords) > maxDistance or canOpenTarget(playerPed)) then
-						client.closeInventory()
-						lib.notify({ id = 'inventory_lost_access', type = 'error', description = locale('inventory_lost_access') })
-					end
-				end
-			end
-		end
+        if client.parachute and GetPedParachuteState(playerPed) ~= -1 then
+            Utils.DeleteEntity(client.parachute)
+            client.parachute = false
+        end
 
-		if client.parachute and GetPedParachuteState(playerPed) ~= -1 then
-			Utils.DeleteEntity(client.parachute[1])
-			client.parachute = false
-		end
+        if EnableWeaponWheel then return end
 
-		if EnableWeaponWheel then return end
+        local weaponHash = GetSelectedPedWeapon(playerPed)
 
-		local weaponHash = GetSelectedPedWeapon(playerPed)
+        if exports['Berry_arcade']:isPlayerInArena() then goto skipWeaponCheck end --HERE
 
-		if currentWeapon then
-			if weaponHash ~= currentWeapon.hash and currentWeapon.timer then
-				local weaponCount = Items[currentWeapon.name]?.count
+        if currentWeapon then
+            if weaponHash ~= currentWeapon.hash and currentWeapon.timer then
+                local weaponCount = Items[currentWeapon.name]?.count
 
-				if weaponCount > 0 then
-					SetCurrentPedWeapon(playerPed, currentWeapon.hash, true)
-					SetAmmoInClip(playerPed, currentWeapon.hash, currentWeapon.metadata.ammo)
-					SetPedCurrentWeaponVisible(playerPed, true, false, false, false)
+                if weaponCount > 0 then
+                    SetCurrentPedWeapon(playerPed, currentWeapon.hash, true)
+                    SetAmmoInClip(playerPed, currentWeapon.hash, currentWeapon.metadata.ammo)
+                    SetPedCurrentWeaponVisible(playerPed, true, false, false, false)
 
-					weaponHash = GetSelectedPedWeapon(playerPed)
-				end
+                    weaponHash = GetSelectedPedWeapon(playerPed)
+                end
 
-				if weaponHash ~= currentWeapon.hash then
-                    lib.print.info(('%s was forcibly unequipped (caused by game behaviour or another resource)'):format(currentWeapon.name))
-					currentWeapon = Weapon.Disarm(currentWeapon, true)
-				end
-			end
-		elseif client.weaponmismatch and not client.ignoreweapons[weaponHash] then
-			local weaponType = GetWeapontypeGroup(weaponHash)
+                if weaponHash ~= currentWeapon.hash then
+                    currentWeapon = Weapon.Disarm(currentWeapon, true)
+                end
+            end
+        elseif client.weaponmismatch and not client.ignoreweapons[weaponHash] then
 
-			if weaponType ~= 0 and weaponType ~= `GROUP_UNARMED` then
-				Weapon.Disarm(currentWeapon, true)
-			end
-		end
-	end, 200)
+            local weaponType = GetWeapontypeGroup(weaponHash)
+
+            if weaponType ~= 0 and weaponType ~= `GROUP_UNARMED` then
+
+                Weapon.Disarm(currentWeapon, true)
+            end
+        end
+
+        ::skipWeaponCheck:: -- HERE
+    end, 200)
 
 	local playerId = cache.playerId
 	local EnableKeys = client.enablekeys
